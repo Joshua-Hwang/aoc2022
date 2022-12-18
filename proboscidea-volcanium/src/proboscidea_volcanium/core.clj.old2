@@ -1,0 +1,244 @@
+(ns proboscidea-volcanium.core
+  (:gen-class))
+
+; many valves have 0 flow rate. Shorten the graph by condensing these and making movement time their aggregation.
+
+(defn parse-line [line]
+  (->> line
+       (re-seq #"[A-Z][A-Z]|\d+")
+       ((fn [[valve rate & leads-to]]
+          {:valve-name valve
+           :rate (parse-long rate)
+           :leads-to (zipmap leads-to (repeat 1))}))))
+
+(comment (parse-line "Valve AA has flow rate=0; tunnels lead to valves DD, II, BB"))
+
+(defn build-system [input]
+  (->> input
+       (map parse-line)
+       (#(zipmap (map :valve-name %) %))))
+
+(comment
+  (build-system
+    (list
+      "Valve AA has flow rate=0; tunnels lead to valves DD, II, BB"
+      "Valve BB has flow rate=13; tunnels lead to valves CC, AA"
+      "Valve CC has flow rate=2; tunnels lead to valves DD, BB"
+      "Valve DD has flow rate=20; tunnels lead to valves CC, AA, EE"
+      "Valve EE has flow rate=3; tunnels lead to valves FF, DD"
+      "Valve FF has flow rate=0; tunnels lead to valves EE, GG"
+      "Valve GG has flow rate=0; tunnels lead to valves FF, HH"
+      "Valve HH has flow rate=22; tunnel leads to valve GG"
+      "Valve II has flow rate=0; tunnels lead to valves AA, JJ"
+      "Valve JJ has flow rate=21; tunnel leads to valve II")))
+
+(defn compress-valve 
+  "Assumes only two :leads-to"
+  [graph valve-to-delete-name]
+  (as-> graph g
+    (let [valve-to-delete (g valve-to-delete-name)
+          connected-valves (:leads-to valve-to-delete)]
+      (reduce
+        (fn [g [valve-name time-to-valve-to-delete]]
+          (update-in g [valve-name :leads-to]
+                     ; remove valve from leads-to
+                     ; remember time-taken
+                     ; add new-connection with time + above
+                     ; if path to other-valve exists choose minimum time-taken
+                     (fn [valve-leads]
+                       (reduce
+                         (fn [valve-leads [new-connection-name new-connection-time]]
+                           (update valve-leads new-connection-name
+                                   (fn [existing-connection-time]
+                                     (min
+                                       (+ time-to-valve-to-delete new-connection-time)
+                                       (if (nil? existing-connection-time) ##Inf existing-connection-time)))))
+                         (dissoc valve-leads (:valve-name valve-to-delete))
+                         (filter (fn [[v-name _]] (not= v-name valve-name)) connected-valves)))))
+        g connected-valves))
+    (dissoc g valve-to-delete-name)))
+
+(comment
+  (compress-valve
+    {"FF" {:valve-name "FF", :rate 0, :leads-to {"EE" 2, "GG" 3}},
+     "GG" {:valve-name "GG", :rate 0, :leads-to {"FF" 3, "HH" 1}},
+     "EE" {:valve-name "EE", :rate 3, :leads-to {"FF" 2, "DD" 1}}}
+    "FF"))
+
+(comment
+  (compress-valve
+    {"FF" {:valve-name "FF", :rate 0, :leads-to {"EE" 2, "GG" 3}},
+     "GG" {:valve-name "GG", :rate 0, :leads-to {"FF" 3, "HH" 1, "EE" 2}},
+     "EE" {:valve-name "EE", :rate 3, :leads-to {"FF" 2, "DD" 1, "GG" 2}}}
+    "FF"))
+
+(defn compress-graph
+  "reduce all nodes with rate 0 except AA.
+  All with rate=0 connect two nodes"
+  [graph]
+  (let [damaged-valves (->> graph
+                            (vals)
+                            (filter #(= 0 (:rate %)))
+                            (map :valve-name)
+                            (filter (partial not= "AA")))]
+    (reduce compress-valve graph damaged-valves)))
+
+(comment
+  (compress-graph
+    {"JJ" {:valve-name "JJ", :rate 21, :leads-to {"II" 1}},
+     "HH" {:valve-name "HH", :rate 22, :leads-to {"GG" 1}},
+     "FF" {:valve-name "FF", :rate 0, :leads-to {"EE" 1, "GG" 1}},
+     "GG" {:valve-name "GG", :rate 0, :leads-to {"FF" 1, "HH" 1}},
+     "DD" {:valve-name "DD", :rate 20, :leads-to {"CC" 1, "AA" 1, "EE" 1}},
+     "CC" {:valve-name "CC", :rate 2, :leads-to {"DD" 1, "BB" 1}},
+     "II" {:valve-name "II", :rate 0, :leads-to {"AA" 1, "JJ" 1}},
+     "BB" {:valve-name "BB", :rate 13, :leads-to {"CC" 1, "AA" 1}},
+     "AA" {:valve-name "AA", :rate 0, :leads-to {"DD" 1, "II" 1, "BB" 1}},
+     "EE" {:valve-name "EE", :rate 3, :leads-to {"FF" 1, "DD" 1}}}))
+
+(defn fw
+  "https://en.wikipedia.org/wiki/Floyd%E2%80%93Warshall_algorithm"
+  [graph]
+  (let [nodes (keys graph)]
+    (reduce
+      (fn [graph [k i j]]
+        (let [dist-ij (get-in graph [i :leads-to j] ##Inf)
+              dist-ik (get-in graph [i :leads-to k] ##Inf)
+              dist-kj (get-in graph [k :leads-to j] ##Inf)]
+          (if (> dist-ij (+ dist-ik dist-kj))
+            (-> graph
+                (assoc-in [i :leads-to j] (+ dist-ik dist-kj))
+                (assoc-in [j :leads-to i] (+ dist-ik dist-kj)))
+            graph)))
+      graph
+      (for [k nodes
+            i nodes
+            j nodes
+            :when (and (not= k i) (not= k j) (not= i j))]
+        [k i j]))))
+
+; walks the entire graph
+(defn dfs [graph opened location minute pressure]
+  (if (or (= (count graph) (count opened)) (< 30 minute))
+    [pressure]
+    (if (not (opened location))
+      ; open valve
+      (dfs graph
+           (conj opened location)
+           location
+           (inc minute)
+           (+ pressure (* (- 30 minute) (get-in graph [location :rate]))))
+      ; move on
+      (->> (get-in graph [location :leads-to])
+           (remove (fn [[new-location _]] (opened new-location)))
+           (mapcat (fn [[new-location time-to]]
+                  (dfs graph
+                       opened
+                       new-location
+                       (+ minute time-to)
+                       pressure)))))))
+
+(defn run-app [input]
+  (let [graph (->> input (build-system) (compress-graph) (fw))]
+    graph
+    (->> (dfs graph #{"AA"} "AA" 1 0)
+         (apply max))))
+
+; (defn -main []
+;   (println (run-app
+;      (list
+;        "Valve AA has flow rate=0; tunnels lead to valves DD, II, BB"
+;        "Valve BB has flow rate=13; tunnels lead to valves CC, AA"
+;        "Valve CC has flow rate=2; tunnels lead to valves DD, BB"
+;        "Valve DD has flow rate=20; tunnels lead to valves CC, AA, EE"
+;        "Valve EE has flow rate=3; tunnels lead to valves FF, DD"
+;        "Valve FF has flow rate=0; tunnels lead to valves EE, GG"
+;        "Valve GG has flow rate=0; tunnels lead to valves FF, HH"
+;        "Valve HH has flow rate=22; tunnel leads to valve GG"
+;        "Valve II has flow rate=0; tunnels lead to valves AA, JJ"
+;        "Valve JJ has flow rate=21; tunnel leads to valve II"))))
+
+; (defn -main []
+;   (->> *in*
+;        (java.io.BufferedReader.)
+;        (line-seq)
+;        (run-app)
+;        (println)))
+
+; walks the entire graph
+(defn dfs2 [graph opened human-location elephant-location human-minute elephant-minute pressure]
+  (if (or (= (count graph) (count opened)) (and (< 30 human-minute) (< 30 elephant-minute)))
+    [pressure]
+    (if (<= human-minute elephant-minute)
+      ; human goes
+      (if (not (opened human-location))
+        ; open valve
+        (dfs2 graph
+              (conj opened human-location)
+              human-location
+              elephant-location
+              (inc human-minute)
+              elephant-minute
+              (+ pressure (* (- 30 human-minute) (get-in graph [human-location :rate]))))
+        ; move on
+        (->> (get-in graph [human-location :leads-to])
+             (remove (fn [[new-location _]] (opened new-location)))
+             (map (fn [[new-location time-to]]
+                    (dfs2 graph
+                          opened
+                          new-location
+                          elephant-location
+                          (+ human-minute time-to)
+                          elephant-minute
+                          pressure)))
+             (apply concat)))
+      ; elephant goes
+      (if (not (opened elephant-location))
+        ; open valve
+        (dfs2 graph
+              (conj opened elephant-location)
+              human-location
+              elephant-location
+              human-minute
+              (inc elephant-minute)
+              (+ pressure (* (- 30 elephant-minute) (get-in graph [elephant-location :rate]))))
+        ; move on
+        (->> (get-in graph [elephant-location :leads-to])
+             (remove (fn [[new-location _]] (opened new-location)))
+             (remove (fn [[new-location _]] (= human-location new-location)))
+             (map (fn [[new-location time-to]]
+                    (dfs2 graph
+                          opened
+                          human-location
+                          new-location
+                          human-minute
+                          (+ elephant-minute time-to)
+                          pressure)))
+             (apply concat))))))
+
+(defn run-app2 [input]
+  (let [graph (->> input (build-system) (compress-graph) (fw))]
+    graph
+    (->> (dfs2 graph #{"AA"} "AA" "AA" 5 5 0)
+         (apply max))))
+
+; (defn -main []
+;   (println (run-app2
+;      (list
+;        "Valve AA has flow rate=0; tunnels lead to valves DD, II, BB"
+;        "Valve BB has flow rate=13; tunnels lead to valves CC, AA"
+;        "Valve CC has flow rate=2; tunnels lead to valves DD, BB"
+;        "Valve DD has flow rate=20; tunnels lead to valves CC, AA, EE"
+;        "Valve EE has flow rate=3; tunnels lead to valves FF, DD"
+;        "Valve FF has flow rate=0; tunnels lead to valves EE, GG"
+;        "Valve GG has flow rate=0; tunnels lead to valves FF, HH"
+;        "Valve HH has flow rate=22; tunnel leads to valve GG"
+;        "Valve II has flow rate=0; tunnels lead to valves AA, JJ"
+;        "Valve JJ has flow rate=21; tunnel leads to valve II"))))
+
+(defn -main []
+  (->> *in*
+       (java.io.BufferedReader.)
+       (line-seq)
+       (run-app2)
+       (println)))
