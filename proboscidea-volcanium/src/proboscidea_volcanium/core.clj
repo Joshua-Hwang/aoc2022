@@ -204,8 +204,19 @@
   (if (< 30 minute)
     '()
     (let [minutes-left (- 30 minute)
-          active-states (filter #(or (>= minute (:elephant-sleep-till %)) (>= minute (:sleep-till %))) states)
+          best-pressure (apply max 0 (map :pressure states))
+          ; best-case is the state turns on all unopened valves right now
+          ; states (filter (fn [{opened :opened, pressure :pressure}]
+          ;                  (let [unopened (map val (remove #(opened (key %)) graph))
+          ;                        optimistic-pressure (+ pressure (apply + (map * (reverse (sort (map :rate unopened))) (#(interleave % %) (range minutes-left 0 -1)))))]
+          ;                    (<= best-pressure optimistic-pressure)))
+          ;                states)
+          ; states (take 15 (sort (fn [{a :pressure} {b :pressure}] (compare a b)) states))
+          ; active-states (filter #(or (>= minute (:elephant-sleep-till %)) (>= minute (:sleep-till %))) states)
+          ; read later people were culling ridiculous amounts. Fair enough.
+          active-states (take 300 (sort (fn [{a :pressure} {b :pressure}] (compare b a)) (filter #(or (>= minute (:elephant-sleep-till %)) (>= minute (:sleep-till %))) states)))
           future-states (filter #(and (< minute (:elephant-sleep-till %)) (< minute (:sleep-till %))) states)]
+      (println minute (count states))
       (->> active-states
            ; generate human moves
            (map (fn [{location :location
@@ -293,10 +304,10 @@
                 :sleep-till 5
                 :elephant-sleep-till 5}]
               5)
-              (take 3)
-              ; (last)
-              ; (map :pressure)
-              ; (apply max)
+              ; (take 3)
+              (last)
+              (map :pressure)
+              (apply max)
               )))
 
 (comment
