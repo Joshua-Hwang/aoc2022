@@ -143,10 +143,17 @@
       (cons taken (lazy-seq (take-nths (drop 1 nths) tail))))
     nil))
 
-(take-nths [0 1] [1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16])
-
+(comment (take-nths [0 1] [1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16]))
 (comment (take-nths (cycle [1 2 3 4]) (cycle [0 2 4 9 15])))
 
+; okay so the deal with part 2 is you have to find some period
+; to do this I start printing out the rock-index and wind-index once a rock has landed
+; eventually you'll be able to see a pattern
+; (starting junk... pattern... pattern again)
+; using that pattern and take-nths you should be able to calculate the total height
+; something like
+; height of starting junk + height from pattern * periods + remaining height that isn't in the pattern
+; I used the sample input to fine tune it just right
 (defn run-app2 [input]
   (let [winds (parse-input input)
         ;period (* 5 (count winds))
