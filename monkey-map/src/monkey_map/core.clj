@@ -2,12 +2,6 @@
   (:require [clojure.string :as str])
   (:gen-class))
 
-(defn r [[row _]] row)
-(defn c [[_ col]] col)
-
-; need to create data structure which can query the whole row or whole column
-; the way the sample (and my input) map are set up. There are no "gaps" between parts of the map
-
 (defn parse-map-line [line]
   (mapv #(case % \space nil %) line))
 
@@ -31,73 +25,13 @@
           "        .#......"
           "......#.")))
 
-(def get-row
-  (memoize
-    (fn [m row]
-      (let [map-row (get m row)
-            col (count (take-while (partial = nil) map-row))]
-        [[row col] (filterv (partial not= nil) map-row)]))))
-
-(comment
-  (get-row
-    [[nil nil nil nil \. \. \# nil nil nil nil nil]
-     [nil nil nil nil \# \. \. nil nil nil nil nil]
-     [nil nil nil nil \. \. \. nil nil nil nil nil]
-     [nil nil nil nil \. \. \. nil nil nil nil nil]
-     [\. \. \. \# \. \. \. \. \. \. \. \#]
-     [\. \. \. \. \. \. \. \. \# \. \. \.]
-     [\. \. \# \. \. \. \. \# \. \. \. \.]
-     [\. \. \. \. \. \. \. \. \. \. \# \.]
-     [nil nil nil nil nil nil nil nil \. \. \. \# \. \. \. \.]
-     [nil nil nil nil nil nil nil nil \. \. \. \. \. \# \. \.]
-     [nil nil nil nil nil nil nil nil \. \# \. \. \. \. \. \.]
-     [\. \. \. \. \. \. \# \.]]
-    2))
-
-(def get-col
-  (memoize
-    (fn [m col]
-      (let [map-col (mapv #(get % col nil) m)
-            row (count (take-while (partial = nil) map-col))]
-        [[row col] (filterv (partial not= nil) map-col)]))))
-
-(comment
-  (get-col
-    [[nil nil nil nil nil nil nil nil nil \. \. \#]
-     [nil nil nil nil nil nil nil nil nil \# \. \.]
-     [nil nil nil nil nil nil nil nil nil \. \. \.]
-     [nil nil nil nil nil nil nil nil nil \. \. \.]
-     [\. \. \. \# \. \. \. \. \. \. \. \#]
-     [\. \. \. \. \. \. \. \. \# \. \. \.]
-     [\. \. \# \. \. \. \. \# \. \. \. \.]
-     [\. \. \. \. \. \. \. \. \. \. \# \.]
-     [nil nil nil nil nil nil nil nil \. \. \. \# \. \. \. \.]
-     [nil nil nil nil nil nil nil nil \. \. \. \. \. \# \. \.]
-     [nil nil nil nil nil nil nil nil \. \# \. \. \. \. \. \.]
-     [\. \. \. \. \. \. \# \.]]
-    3))
-(comment
-  (get-col
-    [[nil nil nil nil nil nil nil nil nil \. \. \#]
-     [nil nil nil nil nil nil nil nil nil \# \. \.]
-     [nil nil nil nil nil nil nil nil nil \. \. \.]
-     [nil nil nil nil nil nil nil nil nil \. \. \.]
-     [\. \. \. \# \. \. \. \. \. \. \. \#]
-     [\. \. \. \. \. \. \. \. \# \. \. \.]
-     [\. \. \# \. \. \. \. \# \. \. \. \.]
-     [\. \. \. \. \. \. \. \. \. \. \# \.]
-     [nil nil nil nil nil nil nil nil \. \. \. \# \. \. \. \.]
-     [nil nil nil nil nil nil nil nil \. \. \. \. \. \# \. \.]
-     [nil nil nil nil nil nil nil nil \. \# \. \. \. \. \. \.]
-     [\. \. \. \. \. \. \# \.]]
-    13))
-
 (defn parse-movement [input]
   ; number letter pairs
   ; do something then alternate row/column movement
   (let [steps (map parse-long (re-seq #"\d+" input))
         rotations (re-seq #"[LR]" input)]
-    (map vector steps rotations)))
+    ; I messed up and the final movement is not considered
+    (map vector (concat steps [0]) (concat rotations ["R" "L"]))))
 
 (comment
   (parse-movement "10R5L5R10L4R5L5"))
@@ -119,55 +53,30 @@
       "........#..."
       "..#....#...."
       "..........#."
-      "       ...#...."
-      "       .....#.."
-      "       .#......"
-      "       ......#."
+      "        ...#...."
+      "        .....#.."
+      "        .#......"
+      "        ......#."
       ""
       "10R5L5R10L4R5L5")))
 
-(defn walk [line steps idx]
-  (if (neg? steps)
-    ; reverse line
-    ; reverse idx (mod (- idx) (count line))
-    ; take steps as if normal
-    ; unreverse
-    ; unreverse idx
-    (let [reversed-line (reverse line)
-          reversed-idx (mod (- (inc idx)) (count line))
-          new-reversed-idx (walk reversed-line (abs steps) reversed-idx)
-          new-idx (mod (- (inc new-reversed-idx)) (count line))]
-      new-idx)
-    (->> line
-         (cycle)
-         (drop idx)
-         ; drop starting point
-         (drop 1)
-         ; first is now starting point
-         (take steps)
-         (take-while (partial not= \#))
-         (count)
-         ; return new idx
-         ; will need to loop
-         (#(mod (+ idx %) (count line))))))
+(defn get-m-row [m row] (m row))
+(defn get-m-col [m col] (map #(get % col) m))
 
-(comment (walk (vector \. \# \. \.) 0 2))
-(comment (walk (vector \. \# \. \.) 1 2))
-(comment (walk (vector \. \# \. \.) 2 2))
-(comment (walk (vector \. \# \. \.) 3 2))
-(comment (walk (vector \. \# \. \.) 10 2))
-; length 4: 0 -> 3 = -1, 1 -> 2 = -2
-; length 3: 0 -> 2 = -1, 1 -> 1 = -2
-(comment (walk (vector \. \# \. \.) -1 2))
-(comment (walk (vector \. \# \. \.) -2 2))
-(comment (walk (vector \. \# \. \.) -3 2))
-(comment (walk (vector \. \# \. \.) -10 2))
-(comment (walk (vector \. \. \. \.) 1 2))
-(comment (walk (vector \. \. \. \.) 2 2))
-(comment (walk (vector \. \. \. \.) 10 2))
-(comment (walk (vector \. \. \. \.) -1 2))
-(comment (walk (vector \. \. \. \.) -2 2))
-(comment (walk (vector \. \. \. \.) -10 2))
+(comment
+  (get-m-col [[nil nil nil nil nil nil nil nil nil \. \. \#]
+              [nil nil nil nil nil nil nil nil nil \# \. \.]
+              [nil nil nil nil nil nil nil nil nil \. \. \.]
+              [nil nil nil nil nil nil nil nil nil \. \. \.]
+              [\. \. \. \# \. \. \. \. \. \. \. \#]
+              [\. \. \. \. \. \. \. \. \# \. \. \.]
+              [\. \. \# \. \. \. \. \# \. \. \. \.]
+              [\. \. \. \. \. \. \. \. \. \. \# \.]
+              [nil nil nil nil nil nil nil nil \. \. \. \# \. \. \. \.]
+              [nil nil nil nil nil nil nil nil \. \. \. \. \. \# \. \.]
+              [nil nil nil nil nil nil nil nil \. \# \. \. \. \. \. \.]
+              [nil nil nil nil nil nil nil nil \. \. \. \. \. \. \# \.]]
+             3))
 
 (defn rotate [direction rotation]
   (case direction
@@ -176,82 +85,138 @@
     :left (case rotation "R" :up "L" :down)
     :up (case rotation "R" :right "L" :left)))
 
-(defn rotations->directions [prev-direction rotations]
-  (if (empty? rotations)
-    nil
-    (let [rotation (first rotations)
-          direction (rotate prev-direction rotation)]
-      (cons direction (lazy-seq (rotations->directions direction (rest rotations)))))))
-
-(comment (rotations->directions :right ["R"]))
-(comment (rotations->directions :right ["L"]))
-(comment (rotations->directions :right ["R" "R" "L" "R"]))
-
-(defn walk-turn
-  "Each move is of the form [steps new-direction]
-  new-direction is after taking steps.
-  Returns lazy sequence of [new-direction [coords]]"
-  [m direction [row col] moves]
-  (if (empty? moves)
-    nil
-    (let [[steps new-direction] (first moves)
-          [[offset-row offset-col] line] (case direction
-                                           :right (get-row m row)
-                                           :down (get-col m col)
-                                           :left (get-row m row)
-                                           :up (get-col m col))
-          ; looped together just cuz
-          [idx steps] (case direction
-                        :right [(- col offset-col) steps]
-                        :down [(- row offset-row) steps]
-                        :left [(- col offset-col) (- steps)]
-                        :up [(- row offset-row) (- steps)])
-          new-idx (walk line steps idx)
-          new-location (case direction
-                         :right [row (+ new-idx offset-col)]
-                         :down [(+ new-idx offset-row) col]
-                         :left [row (+ new-idx offset-col)]
-                         :up [(+ new-idx offset-row) col])]
-      (cons [new-direction new-location] (lazy-seq (walk-turn m new-direction new-location (rest moves)))))))
+(defn step-right [m [row col :as old-location]]
+  (let [new-location [row (inc col)]
+        new-location (if (get-in m new-location) new-location
+                       (->> (range (inc col))
+                            (map vector (repeat row))
+                            (drop-while #(nil? (get-in m %)))
+                            (first)))]
+    (case (get-in m new-location)
+      \. [new-location :right]
+      \# [old-location :right])))
 
 (comment
-  (walk-turn
-    [[nil nil nil nil nil nil nil nil nil \. \. \#]
-     [nil nil nil nil nil nil nil nil nil \# \. \.]
-     [nil nil nil nil nil nil nil nil nil \. \. \.]
-     [nil nil nil nil nil nil nil nil nil \. \. \.]
-     [\. \. \. \# \. \. \. \. \. \. \. \#]
-     [\. \. \. \. \. \. \. \. \# \. \. \.]
-     [\. \. \# \. \. \. \. \# \. \. \. \.]
-     [\. \. \. \. \. \. \. \. \. \. \# \.]
-     [nil nil nil nil nil nil nil nil \. \. \. \# \. \. \. \.]
-     [nil nil nil nil nil nil nil nil \. \. \. \. \. \# \. \.]
-     [nil nil nil nil nil nil nil nil \. \# \. \. \. \. \. \.]
-     [\. \. \. \. \. \. \# \.]]
-    :right [0 9] (list [10 :down])))
+  (step-right [[nil nil nil nil nil nil nil nil nil \. \. \#]
+               [nil nil nil nil nil nil nil nil nil \# \. \.]
+               [nil nil nil nil nil nil nil nil nil \. \. \.]
+               [nil nil nil nil nil nil nil nil nil \. \. \.]
+               [\. \. \. \# \. \. \. \. \. \. \. \#]
+               [\. \. \. \. \. \. \. \. \# \. \. \.]
+               [\. \. \# \. \. \. \. \# \. \. \. \.]
+               [\. \. \. \. \. \. \. \. \. \. \# \.]
+               [nil nil nil nil nil nil nil nil \. \. \. \# \. \. \. \.]
+               [nil nil nil nil nil nil nil nil \. \. \. \. \. \# \. \.]
+               [nil nil nil nil nil nil nil nil \. \# \. \. \. \. \. \.]
+               [nil nil nil nil nil nil nil nil \. \. \. \. \. \. \# \.]]
+             [0 9]))
 (comment
-  (walk-turn
-    [[nil nil nil nil nil nil nil nil nil \. \. \#]
-     [nil nil nil nil nil nil nil nil nil \# \. \.]
-     [nil nil nil nil nil nil nil nil nil \. \. \.]
-     [nil nil nil nil nil nil nil nil nil \. \. \.]
-     [\. \. \. \# \. \. \. \. \. \. \. \#]
-     [\. \. \. \. \. \. \. \. \# \. \. \.]
-     [\. \. \# \. \. \. \. \# \. \. \. \.]
-     [\. \. \. \. \. \. \. \. \. \. \# \.]
-     [nil nil nil nil nil nil nil nil \. \. \. \# \. \. \. \.]
-     [nil nil nil nil nil nil nil nil \. \. \. \. \. \# \. \.]
-     [nil nil nil nil nil nil nil nil \. \# \. \. \. \. \. \.]
-     [\. \. \. \. \. \. \# \.]]
-    :right [0 9] (list [10 :down] [2 :left] [2 :up])))
+  (step-right [[nil nil nil nil nil nil nil nil nil \. \. \#]
+               [nil nil nil nil nil nil nil nil nil \# \. \.]
+               [nil nil nil nil nil nil nil nil nil \. \. \.]
+               [nil nil nil nil nil nil nil nil nil \. \. \.]
+               [\. \. \. \# \. \. \. \. \. \. \. \#]
+               [\. \. \. \. \. \. \. \. \# \. \. \.]
+               [\. \. \# \. \. \. \. \# \. \. \. \.]
+               [\. \. \. \. \. \. \. \. \. \. \# \.]
+               [nil nil nil nil nil nil nil nil \. \. \. \# \. \. \. \.]
+               [nil nil nil nil nil nil nil nil \. \. \. \. \. \# \. \.]
+               [nil nil nil nil nil nil nil nil \. \# \. \. \. \. \. \.]
+               [nil nil nil nil nil nil nil nil \. \. \. \. \. \. \# \.]]
+             [1 11]))
+(comment
+  (step-right [[nil nil nil nil nil nil nil nil nil \. \. \#]
+               [nil nil nil nil nil nil nil nil nil \# \. \.]
+               [nil nil nil nil nil nil nil nil nil \. \. \.]
+               [nil nil nil nil nil nil nil nil nil \. \. \.]
+               [\. \. \. \# \. \. \. \. \. \. \. \#]
+               [\. \. \. \. \. \. \. \. \# \. \. \.]
+               [\. \. \# \. \. \. \. \# \. \. \. \.]
+               [\. \. \. \. \. \. \. \. \. \. \# \.]
+               [nil nil nil nil nil nil nil nil \. \. \. \# \. \. \. \.]
+               [nil nil nil nil nil nil nil nil \. \. \. \. \. \# \. \.]
+               [nil nil nil nil nil nil nil nil \. \# \. \. \. \. \. \.]
+               [nil nil nil nil nil nil nil nil \. \. \. \. \. \. \# \.]]
+             [2 11]))
+
+(defn step-down [m [row col :as old-location]]
+  (let [new-location [(inc row) col]
+        new-location (if (get-in m new-location) new-location
+                       (->> (range (inc row))
+                            (#(map vector % (repeat col)))
+                            (drop-while #(nil? (get-in m %)))
+                            (first)))]
+    (case (get-in m new-location)
+      \. [new-location :down]
+      \# [old-location :down])))
+
+(defn step-left [m [row col :as old-location]]
+  (let [new-location [row (dec col)]
+        new-location (if (get-in m new-location) new-location
+                       (->> (range (count (get-m-row m row)) (dec col) -1)
+                            (map vector (repeat row))
+                            (drop-while #(nil? (get-in m %)))
+                            (first)))]
+    (case (get-in m new-location)
+      \. [new-location :left]
+      \# [old-location :left])))
+
+(defn step-up [m [row col :as old-location]]
+  (let [new-location [(dec row) col]
+        new-location (if (get-in m new-location) new-location
+                       (->> (range (count (get-m-col m col)) (dec row) -1)
+                            (#(map vector % (repeat col)))
+                            (drop-while #(nil? (get-in m %)))
+                            (first)))]
+    (case (get-in m new-location)
+      \. [new-location :up]
+      \# [old-location :up])))
+
+(defn walk
+  "Returns a lazy sequence of location and direction.
+  Walks until out of steps"
+  [m location direction steps]
+  (if (zero? steps) (cons [location direction] nil)
+    (let [[new-location new-direction] ((case direction
+                                          :right step-right
+                                          :down step-down
+                                          :left step-left
+                                          :up step-up) m location)]
+      (cons [new-location new-direction]
+            ; try to move forward. If blocked return early
+            (if (= location new-location) nil
+              (lazy-seq (walk m new-location new-direction (dec steps))))))))
+
+(defn walks
+  "Moves must be [steps new-direction]
+  Returns lazy seq of new location and new direction (not the one we were walking along)"
+  [m location direction moves]
+  (if (empty? moves) nil
+    (let [[steps rotation] (first moves)
+          [new-location new-direction] (last (walk m location direction steps))
+          new-direction (rotate new-direction rotation)]
+      (cons [new-location new-direction] (lazy-seq (walks m new-location new-direction (rest moves)))))))
+
+(comment
+  (walk [[nil nil nil nil nil nil nil nil nil \. \. \#]
+         [nil nil nil nil nil nil nil nil nil \# \. \.]
+         [nil nil nil nil nil nil nil nil nil \. \. \.]
+         [nil nil nil nil nil nil nil nil nil \. \. \.]
+         [\.  \.  \.  \#  \.  \.  \.  \.  \.  \. \. \#]
+         [\.  \.  \.  \.  \.  \.  \.  \.  \#  \. \. \.]
+         [\.  \.  \#  \.  \.  \.  \.  \#  \.  \. \. \.]
+         [\.  \.  \.  \.  \.  \.  \.  \.  \.  \. \# \.]
+         [nil nil nil nil nil nil nil nil \.  \. \. \# \. \. \. \.]
+         [nil nil nil nil nil nil nil nil \.  \. \. \. \. \# \. \.]
+         [nil nil nil nil nil nil nil nil \.  \# \. \. \. \. \. \.]
+         [nil nil nil nil nil nil nil nil \.  \. \. \. \. \. \# \.]]
+        [5 10] :right 10))
 
 (defn run-app [input]
   (let [[m moves] (parse-input input)
-        directions (rotations->directions :right (map second moves))
         ; moves now with directions instead
-        moves (map (fn [[steps _] direction] [steps direction]) moves directions)
-        [initial-location _] (get-row m 0)
-        [final-direction [final-row final-col]] (last (walk-turn m :right initial-location moves))]
+        initial-location [0 (->> (get-m-row m 0) (take-while nil?) (count))]
+        [[final-row final-col] final-direction] (last (walks m initial-location :right moves))]
     (+ (* 1000 (inc final-row)) (* 4 (inc final-col)) (case final-direction :right 0 :down 1 :left 2 :up 3))))
 
 (comment
@@ -272,9 +237,310 @@
       ""
       "10R5L5R10L4R5L5")))
 
+; (defn -main []
+;   (->> *in*
+;        (java.io.BufferedReader.)
+;        (line-seq)
+;        (run-app)
+;        (println)))
+
+(defn step-right2 [m [row col :as old-location]]
+  (let [new-location [row (inc col)]
+        new-direction :right
+        [new-location new-direction] (if (get-in m new-location)
+                                       [new-location new-direction]
+                                       ; this is hardcoded for the sample
+
+                                       ; (let [offset (mod row 4)]
+                                       ;   (case (quot row 4)
+                                       ;     0 (let [row (- 11 offset)]
+                                       ;         [(->> (range (count (get-m-row m row)) 0 -1)
+                                       ;               (#(map vector (repeat row) %))
+                                       ;               (drop-while #(nil? (get-in m %)))
+                                       ;               (first)) :left])
+                                       ;     1 (let [col (- 15 offset)]
+                                       ;         [(->> (range (count (get-m-col m col)))
+                                       ;               (#(map vector % (repeat col)))
+                                       ;               (drop-while #(nil? (get-in m %)))
+                                       ;               (first)) :down])
+                                       ;     2 (let [row (- 3 offset)]
+                                       ;         [(->> (range (count (get-m-row m row)) 0 -1)
+                                       ;               (#(map vector (repeat row) %))
+                                       ;               (drop-while #(nil? (get-in m %)))
+                                       ;               (first)) :left])))
+
+                                       (let [offset (mod row 50)]
+                                         (case (quot row 50)
+                                           0 (let [row (- 149 offset)]
+                                               [(->> (range (count (get-m-row m row)) 0 -1)
+                                                     (#(map vector (repeat row) %))
+                                                     (drop-while #(nil? (get-in m %)))
+                                                     (first)) :left])
+                                           1 (let [col (+ 100 offset)]
+                                               [(->> (range (count (get-m-col m col)) 0 -1)
+                                                     (#(map vector % (repeat col)))
+                                                     (drop-while #(nil? (get-in m %)))
+                                                     (first)) :up])
+                                           2 (let [row (- 49 offset)]
+                                               [(->> (range (count (get-m-row m row)) 0 -1)
+                                                     (#(map vector (repeat row) %))
+                                                     (drop-while #(nil? (get-in m %)))
+                                                     (first)) :left])
+                                           3 (let [col (+ 50 offset)]
+                                               [(->> (range (count (get-m-col m col)) 0 -1)
+                                                     (#(map vector % (repeat col)))
+                                                     (drop-while #(nil? (get-in m %)))
+                                                     (first)) :up])))
+
+                                       )]
+    (case (get-in m new-location)
+      \. [new-location new-direction]
+      \# [old-location :right])))
+
+(comment
+  (step-right2 [[nil nil nil nil nil nil nil nil nil \. \. \#]
+                [nil nil nil nil nil nil nil nil nil \# \. \.]
+                [nil nil nil nil nil nil nil nil nil \. \. \.]
+                [nil nil nil nil nil nil nil nil nil \. \. \.]
+                [\. \. \. \# \. \. \. \. \. \. \. \#]
+                [\. \. \. \. \. \. \. \. \# \. \. \.]
+                [\. \. \# \. \. \. \. \# \. \. \. \.]
+                [\. \. \. \. \. \. \. \. \. \. \# \.]
+                [nil nil nil nil nil nil nil nil \. \. \. \# \. \. \. \.]
+                [nil nil nil nil nil nil nil nil \. \. \. \. \. \# \. \.]
+                [nil nil nil nil nil nil nil nil \. \# \. \. \. \. \. \.]
+                [nil nil nil nil nil nil nil nil \. \. \. \. \. \. \# \.]]
+               [5 11]))
+
+(defn step-down2 [m [row col :as old-location]]
+  (let [new-location [(inc row) col]
+        new-direction :down
+        [new-location new-direction] (if (get-in m new-location)
+                                       [new-location new-direction]
+                                       ; this is hardcoded for the sample
+
+                                       ; (let [offset (mod col 4)]
+                                       ;   (case (quot col 4)
+                                       ;     0 (let [col (- 11 offset)]
+                                       ;         [(->> (range (count (get-m-row m col)) 0 -1)
+                                       ;               (#(map vector % (repeat col)))
+                                       ;               (drop-while #(nil? (get-in m %)))
+                                       ;               (first)) :up])
+                                       ;     1 (let [row (- 11 offset)]
+                                       ;         [(->> (range (count (get-m-col m row)))
+                                       ;               (#(map vector (repeat row) %))
+                                       ;               (drop-while #(nil? (get-in m %)))
+                                       ;               (first)) :right])
+                                       ;     2 (let [col (- 3 offset)]
+                                       ;         [(->> (range (count (get-m-row m col)) 0 -1)
+                                       ;               (#(map vector % (repeat col)))
+                                       ;               (drop-while #(nil? (get-in m %)))
+                                       ;               (first)) :up])
+                                       ;     3 (let [row (- 7 offset)]
+                                       ;         [(->> (range (count (get-m-row m row)))
+                                       ;               (#(map vector (repeat row) %))
+                                       ;               (drop-while #(nil? (get-in m %)))
+                                       ;               (first)) :right])))
+
+                                       (let [offset (mod col 50)]
+                                         (case (quot col 50)
+                                           0 (let [col (+ 100 offset)]
+                                               [(->> (range (count (get-m-row m col)))
+                                                     (#(map vector % (repeat col)))
+                                                     (drop-while #(nil? (get-in m %)))
+                                                     (first)) :down])
+                                           1 (let [row (+ 150 offset)]
+                                               [(->> (range (count (get-m-col m row)) 0 -1)
+                                                     (#(map vector (repeat row) %))
+                                                     (drop-while #(nil? (get-in m %)))
+                                                     (first)) :left])
+                                           2 (let [row (+ 50 offset)]
+                                               [(->> (range (count (get-m-col m row)) 0 -1)
+                                                     (#(map vector (repeat row) %))
+                                                     (drop-while #(nil? (get-in m %)))
+                                                     (first)) :left])))
+
+                                       )]
+    (case (get-in m new-location)
+      \. [new-location new-direction]
+      \# [old-location :down])))
+
+(defn step-left2 [m [row col :as old-location]]
+  (let [new-location [row (dec col)]
+        new-direction :left
+        [new-location new-direction] (if (get-in m new-location)
+                                       [new-location new-direction]
+                                       ; this is hardcoded for the sample
+
+                                       ; (let [offset (mod row 4)]
+                                       ;   (case (quot row 4)
+                                       ;     0 (let [col (+ 4 offset)]
+                                       ;         [(->> (range (count (get-m-col m col)))
+                                       ;               (#(map vector % (repeat col)))
+                                       ;               (drop-while #(nil? (get-in m %)))
+                                       ;               (first)) :down])
+                                       ;     1 (let [col (- 15 offset)]
+                                       ;         [(->> (range (count (get-m-col m col)) 0 -1)
+                                       ;               (#(map vector % (repeat col)))
+                                       ;               (drop-while #(nil? (get-in m %)))
+                                       ;               (first)) :up])
+                                       ;     2 (let [col (- 7 offset)]
+                                       ;         [(->> (range (count (get-m-col m col)) 0 -1)
+                                       ;               (#(map vector % (repeat col)))
+                                       ;               (drop-while #(nil? (get-in m %)))
+                                       ;               (first)) :up])))
+
+                                       (let [offset (mod row 50)]
+                                         (case (quot row 50)
+                                           0 (let [row (- 149 offset)]
+                                               [(->> (range (count (get-m-row m row)))
+                                                     (#(map vector (repeat row) %))
+                                                     (drop-while #(nil? (get-in m %)))
+                                                     (first)) :right])
+                                           1 (let [col (+ 0 offset)]
+                                               [(->> (range (count (get-m-col m col)))
+                                                     (#(map vector % (repeat col)))
+                                                     (drop-while #(nil? (get-in m %)))
+                                                     (first)) :down])
+                                           2 (let [row (- 49 offset)]
+                                               [(->> (range (count (get-m-row m row)))
+                                                     (#(map vector (repeat row) %))
+                                                     (drop-while #(nil? (get-in m %)))
+                                                     (first)) :right])
+                                           3 (let [col (+ 50 offset)]
+                                               [(->> (range (count (get-m-col m col)))
+                                                     (#(map vector % (repeat col)))
+                                                     (drop-while #(nil? (get-in m %)))
+                                                     (first)) :down])))
+
+                                       )]
+    (case (get-in m new-location)
+      \. [new-location new-direction]
+      \# [old-location :left])))
+
+(defn step-up2 [m [row col :as old-location]]
+  (let [new-location [(dec row) col]
+        new-direction :up
+        [new-location new-direction] (if (get-in m new-location)
+                                       [new-location new-direction]
+                                       ; this is hardcoded for the sample
+
+                                       ; (let [offset (mod col 4)]
+                                       ;   (case (quot col 4)
+                                       ;     0 (let [col (- 11 offset)]
+                                       ;         [(->> (range (count (get-m-row m col)))
+                                       ;               (#(map vector % (repeat col)))
+                                       ;               (drop-while #(nil? (get-in m %)))
+                                       ;               (first)) :down])
+                                       ;     1 (let [row (+ 0 offset)]
+                                       ;         [(->> (range (count (get-m-col m row)))
+                                       ;               (#(map vector (repeat row) %))
+                                       ;               (drop-while #(nil? (get-in m %)))
+                                       ;               (first)) :right])
+                                       ;     2 (let [col (- 3 offset)]
+                                       ;         [(->> (range (count (get-m-row m col)))
+                                       ;               (#(map vector % (repeat col)))
+                                       ;               (drop-while #(nil? (get-in m %)))
+                                       ;               (first)) :down])
+                                       ;     3 (let [row (- 7 offset)]
+                                       ;         [(->> (range (count (get-m-row m row)))
+                                       ;               (#(map vector (repeat row) %))
+                                       ;               (drop-while #(nil? (get-in m %)))
+                                       ;               (first)) :left])))
+
+                                       (let [offset (mod col 50)]
+                                         (case (quot col 50)
+                                           0 (let [row (+ 50 offset)]
+                                               [(->> (range (count (get-m-col m row)))
+                                                     (#(map vector (repeat row) %))
+                                                     (drop-while #(nil? (get-in m %)))
+                                                     (first)) :right])
+                                           1 (let [row (+ 150 offset)]
+                                               [(->> (range (count (get-m-col m row)))
+                                                     (#(map vector (repeat row) %))
+                                                     (drop-while #(nil? (get-in m %)))
+                                                     (first)) :right])
+                                           2 (let [col (+ 0 offset)]
+                                               [(->> (range (count (get-m-col m col)) 0 -1)
+                                                     (#(map vector % (repeat col)))
+                                                     (drop-while #(nil? (get-in m %)))
+                                                     (first)) :up])))
+
+                                       )]
+    (case (get-in m new-location)
+      \. [new-location new-direction]
+      \# [old-location :up])))
+
+(defn walk2
+  "Returns a lazy sequence of location and direction.
+  Walks until out of steps or hits a wall"
+  [m location direction steps]
+  (if (zero? steps) (cons [location direction] nil)
+    (let [[new-location new-direction]
+          ((case direction
+             :right step-right2
+             :down step-down2
+             :left step-left2
+             :up step-up2) m location)]
+      (cons [new-location new-direction]
+            ; try to move forward. If blocked return early
+            (if (= location new-location) nil
+              (lazy-seq (walk2 m new-location new-direction (dec steps))))))))
+
+(defn walks2
+  "Moves must be [steps new-direction]
+  Returns lazy seq of new location and new direction (not the one we were walking along)"
+  [m location direction moves]
+  (if (empty? moves) nil
+    (let [[steps rotation] (first moves)
+          [new-location new-direction] (last (walk2 m location direction steps))
+          new-direction (rotate new-direction rotation)]
+      (cons [new-location new-direction] (lazy-seq (walks2 m new-location new-direction (rest moves)))))))
+
+(comment
+  (walk2 [[nil nil nil nil nil nil nil nil nil \. \. \#]
+          [nil nil nil nil nil nil nil nil nil \# \. \.]
+          [nil nil nil nil nil nil nil nil nil \. \. \.]
+          [nil nil nil nil nil nil nil nil nil \. \. \.]
+          [\.  \.  \.  \#  \.  \.  \.  \.  \.  \. \. \#]
+          [\.  \.  \.  \.  \.  \.  \.  \.  \#  \. \. \.]
+          [\.  \.  \#  \.  \.  \.  \.  \#  \.  \. \. \.]
+          [\.  \.  \.  \.  \.  \.  \.  \.  \.  \. \# \.]
+          [nil nil nil nil nil nil nil nil \.  \. \. \# \. \. \. \.]
+          [nil nil nil nil nil nil nil nil \.  \. \. \. \. \# \. \.]
+          [nil nil nil nil nil nil nil nil \.  \# \. \. \. \. \. \.]
+          [nil nil nil nil nil nil nil nil \.  \. \. \. \. \. \# \.]]
+         [5 10] :right 10))
+
+(defn run-app2 [input]
+  (let [[m moves] (parse-input input)
+        ; moves now with directions instead
+        initial-location [0 (->> (get-m-row m 0) (take-while nil?) (count))]
+        path (walks2 m initial-location :right moves)
+        [[final-row final-col] final-direction] (last path)]
+    (+ (* 1000 (inc final-row)) (* 4 (inc final-col)) (case final-direction :right 0 :down 1 :left 2 :up 3))))
+
+(comment
+  (run-app2
+    (list
+      "        ...#"
+      "        .#.."
+      "        #..."
+      "        ...."
+      "...#.......#"
+      "........#..."
+      "..#....#...."
+      "..........#."
+      "        ...#...."
+      "        .....#.."
+      "        .#......"
+      "        ......#."
+      ""
+      "10R5L5R10L4R5L5")))
+
 (defn -main []
   (->> *in*
        (java.io.BufferedReader.)
        (line-seq)
-       (run-app)
+       (run-app2)
        (println)))
